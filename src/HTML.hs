@@ -11,7 +11,6 @@ span :: String -> HTML
 span = vtext "span"
 
 navbar, well, container, row, col3, col9, col12, thead, tbody, th, td, tr, table :: [HTML] -> HTML
-
 container = vnode "div.container"
 row = vnode "div.row"
 well = vnode "div.well"
