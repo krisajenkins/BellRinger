@@ -12,7 +12,7 @@ import Virtual
 import Messages
 import Render
 
--- | Construct a @HTML@ tree from the world with a callback for clicks
+-- | Construct an @HTML@ tree from the world with a callback for clicks
 model :: (Message -> IO ()) -> Model World Message HTML
 model sendCB =
   asPipe $
