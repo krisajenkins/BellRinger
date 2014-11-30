@@ -12,17 +12,13 @@ import Virtual
 import Messages
 import Render
 
--- | Source of events from the UI
-input :: Input Message -> Controller Message
-input clicks = asInput clicks
-
 -- | Construct a @HTML@ tree from the world with a callback for clicks
 model :: (Message -> IO ()) -> Model World Message HTML
 model sendCB =
   asPipe $
   forever $
   do m <- await
-     w <- lift $ get
+     w <- lift get
      let w' = process m w
      lift $ put w'
      yield $
@@ -35,9 +31,9 @@ initialWorld = (0,0,const True,NotRequested)
 -- | A callback the sends @Message@s to an @Output@
 sendMessage :: Output Message -> Message -> IO ()
 sendMessage output msg =
-  do atomically $
-       void $
-       send output msg
+  atomically $
+  void $
+  send output msg
 
 -- | Processes click events, possible dispatching to second order producers
 clickProcessor :: Input Message -> IO (Input Message)
@@ -62,7 +58,7 @@ main =
          do treeState <- newMVar =<<
                          renderSetup (rootView sendCB)
                                      initialWorld
-            k (asSink (reRenderDiff treeState),input processedClicks)
+            k (asSink (reRenderDiff treeState),asInput processedClicks)
   where reRenderDiff treeStateVar newTree =
           do modifyMVar treeStateVar $
                \(TreeState{_node = oldNode,_tree = oldTree}) ->
