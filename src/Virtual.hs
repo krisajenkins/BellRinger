@@ -20,10 +20,9 @@ module Virtual (
   HTML()
   ) where
 
-import           GHCJS.Foreign
-import           GHCJS.Types
-import           GHCJS.Marshal
-import           System.IO.Unsafe -- TODO This is, of course, bad.
+import GHCJS.Foreign
+import GHCJS.Types
+import System.IO.Unsafe -- TODO This is, of course, bad.
 
 data VNode
 data DOMNode
