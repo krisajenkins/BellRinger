@@ -4,7 +4,7 @@
 module Virtual (
   vnode,
   vnodeFull,
-  svgProp,
+  svg,
   rect,
   vtext,
   vbutton,
@@ -28,11 +28,15 @@ data VNode
 data DOMNode
 data Patch
 data JSProperties
-data TreeState = TreeState {_node :: JSRef DOMNode, _tree :: HTML}
-newtype HTML = HTML (JSRef VNode)
-newtype HTMLPatch = HTMLPatch (JSRef Patch)
+data TreeState =
+  TreeState {_node :: JSRef DOMNode
+            ,_tree :: HTML}
+newtype HTML =
+  HTML {nodeRef :: JSRef VNode}
+newtype HTMLPatch =
+  HTMLPatch {patchRef :: JSRef Patch}
 newtype Properties =
-  Properties {props :: JSRef JSProperties}
+  Properties {propsRef :: JSRef JSProperties}
 
 makeTreeState :: JSRef DOMNode -> HTML -> TreeState
 makeTreeState n t= TreeState { _node = n, _tree = t}
@@ -45,16 +49,16 @@ foreign import javascript unsafe
   "$1.appendChild($2)" appendChild :: JSRef DOMNode -> JSRef DOMNode -> IO ()
 
 foreign import javascript unsafe
-  "h($1, $2, $3)" vnode_ :: JSString -> JSRef JSProperties -> JSArray VNode -> JSRef VNode
+  "h($1, $2, $3)" vnode_ :: JSString -> JSRef JSProperties -> JSArray VNode -> IO (JSRef VNode)
 
 foreign import javascript unsafe
-  "h($1, {'ev-click': $2}, $3)" vbutton_ :: JSString -> JSFun (JSRef a -> IO ()) -> JSString -> JSRef VNode
+  "$r = h($1, {'ev-click': $2, 'key': $3}, $4)" vbutton_ :: JSString -> JSFun (JSRef a -> IO ()) -> JSString -> JSString -> IO (JSRef VNode)
 
 foreign import javascript unsafe
-  "h($1, $2)" vtext_ :: JSString -> JSString -> JSRef VNode
+  "h($1, $2)" vtext_ :: JSString -> JSString -> IO (JSRef VNode)
 
 foreign import javascript unsafe
-  "createElement($1)" createDOMNode_ :: JSRef VNode -> JSRef DOMNode
+  "$r = createElement($1)" createDOMNode_ :: JSRef VNode -> IO (JSRef DOMNode)
 
 foreign import javascript safe
   "diff($1, $2)" diff_ :: JSRef VNode -> JSRef VNode -> JSRef Patch
@@ -63,10 +67,10 @@ foreign import javascript safe
   "patch($1, $2)" patch_ :: JSRef DOMNode -> JSRef Patch -> IO (JSRef DOMNode)
 
 foreign import javascript unsafe
-  "$r = {};" noproperty_ :: JSRef JSProperties
+  "$r = {};" noproperty_ :: IO (JSRef JSProperties)
 
 foreign import javascript unsafe
-  "$r = {namespace: 'http://www.w3.org/2000/svg',width: '800px', height: '500px'};" svgProp_ :: JSRef JSProperties
+  "$r = svg('svg', { width: $1, height: $2 }, $3);" svg_ :: JSString -> JSString -> JSArray VNode -> IO (JSRef VNode)
 
 foreign import javascript unsafe
   "$r = svg('rect', { width: $1, height: $2, x: $3, y: $4 });" rect_ :: JSString -> JSString -> JSString -> JSString -> JSRef VNode
@@ -79,13 +83,19 @@ foreign import javascript unsafe
 --             (toJSString v)
 
 noProperty :: Properties
-noProperty = Properties noproperty_
-
-svgProp :: Properties
-svgProp = Properties svgProp_
+noProperty = Properties $ unsafePerformIO noproperty_
 
 data Size = Size String String deriving (Show,Eq)
 data Position = Position String String deriving (Show,Eq)
+
+svg :: Size -> [HTML] -> HTML
+svg (Size w h) children =
+  HTML $
+  unsafePerformIO $
+  do jsChildren <- toArray (fmap nodeRef children)
+     svg_ (toJSString w)
+          (toJSString h)
+          jsChildren
 
 rect :: Size -> Position -> HTML
 rect (Size w h) (Position x y) =
@@ -98,31 +108,35 @@ rect (Size w h) (Position x y) =
 vnodeFull :: String -> Properties -> [HTML] -> HTML
 vnodeFull tag properties children =
   HTML $
-  vnode_ (toJSString tag)
-         (props properties)
-         (unsafePerformIO (toArray (fmap f children)))
-  where f (HTML a) = a
+  unsafePerformIO $
+  do jsChildren <- toArray (fmap nodeRef children)
+     vnode_ (toJSString tag)
+            (propsRef properties)
+            jsChildren
+
 
 vnode :: String -> [HTML] -> HTML
 vnode tag children =
   HTML $
-  vnode_ (toJSString tag)
-         noproperty_
-         (unsafePerformIO (toArray (map f children)))
-  where f (HTML a) = a
+  unsafePerformIO $
+  do jsChildren <- toArray (fmap nodeRef children)
+     props <- noproperty_
+     vnode_ (toJSString tag) props jsChildren
 
 vbutton :: String -> (JSRef a -> IO ()) -> String -> HTML
 vbutton tag f s =
   HTML $
-  vbutton_ (toJSString tag) f' (toJSString s)
-  where f' =
-          unsafePerformIO $
-          syncCallback1 AlwaysRetain True f
+  unsafePerformIO $
+  do f' <- syncCallback1 AlwaysRetain True f
+     vbutton_ (toJSString tag)
+              f'
+              (toJSString s)
+              (toJSString s)
 
 vtext :: String -> String -> HTML
-vtext tag text = HTML $ vtext_ (toJSString tag) (toJSString text)
+vtext tag text = HTML $ unsafePerformIO $ vtext_ (toJSString tag) (toJSString text)
 
-createDOMNode :: HTML -> JSRef DOMNode
+createDOMNode :: HTML -> IO (JSRef DOMNode)
 createDOMNode (HTML x) = createDOMNode_ x
 
 patch :: JSRef DOMNode -> HTMLPatch -> IO (JSRef DOMNode)
@@ -142,6 +156,6 @@ renderSetup :: (a -> HTML) -> a -> IO TreeState
 renderSetup render x = do
   body <- documentBody
   let tree = render x
-      node = createDOMNode tree
+  node <- createDOMNode tree
   _ <- appendChild body node
   return $ makeTreeState node tree

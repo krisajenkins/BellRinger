@@ -10,11 +10,10 @@ import Virtual
 
 marketDataGraph :: [Market] -> HTML
 marketDataGraph rows =
-  vnodeFull "svg"
-            svgProp
-            (zipWith (curry f)
-                     [(0 :: Int) ..]
-                     rows)
+  svg (Size "100%" "200px")
+      (zipWith (curry f)
+               [(0 :: Int) ..]
+               rows)
   where count = length rows
         closes = mapMaybe close rows
         highest = maximum closes
@@ -74,24 +73,33 @@ marketTableDef =
    ,\x ->
       currency x ++
       " " ++
-      showMaybe "-" (fmap floor (currency_volume x)::Maybe Integer))]
+      showMaybe "-" (fmap floor (currency_volume x) :: Maybe Integer))]
 
-controls :: (Message -> IO ()) -> HTML
-controls send =
+msgButton :: (Message -> IO ()) -> Message -> String -> HTML
+msgButton send msg =
+  vbutton "button.btn.btn-primary" (\_ -> send msg)
+
+marketControls :: (Message -> IO ()) -> Pending [Market] -> HTML
+marketControls send (Loaded _) =
   vnode "div"
-        [msgButton (IncFst 5) "+(5, 0)"
-        ,msgButton (IncSnd 3) "+(0, 3)"
-        ,msgButton (IncBoth 1 2) "+(1, 2)"
-        ,msgButton (FilterCurrency (Just "USD")) "USD"
-        ,msgButton (FilterCurrency (Just "GBP")) "GBP"
-        ,msgButton (FilterCurrency Nothing) "All"
-        ,msgButton FetchMarket "AJAX"]
-  where msgButton msg =
-          vbutton "button.btn.btn-primary" (\_ -> send msg)
+        [msgButton send (FilterCurrency (Just "USD")) "USD"
+        ,msgButton send (FilterCurrency (Just "GBP")) "GBP"
+        ,msgButton send (FilterCurrency Nothing) "All"]
+
+marketControls send _ =
+  vnode "div" [msgButton send FetchMarket "AJAX"]
+
+controls :: (Message -> IO ()) -> Pending [Market] -> HTML
+controls send marketData =
+  vnode "div"
+        ([msgButton send (IncFst 5) "+(5, 0)"
+         ,msgButton send (IncSnd 3) "+(0, 3)"
+         ,msgButton send (IncBoth 1 2) "+(1, 2)"] ++
+         [marketControls send marketData])
 
 rootView :: (Message -> IO ()) -> World -> HTML
 rootView send (a,b,filterFn,marketData) =
   vnode "div.container"
             [navbar [vtext "div.navbar-brand" "Demo"]
-            ,row [col3 [controls send],col9 [well [span (show (a,b))]]]
+            ,row [col3 [controls send marketData],col9 [well [span (show (a,b))]]]
             ,row [col12 [well [marketDataView filterFn marketData]]]]
