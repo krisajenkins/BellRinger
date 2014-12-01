@@ -10,23 +10,18 @@ import MVC
 
 import Virtual
 import Messages
-import Render
+import qualified Render
 
 -- | Construct an @HTML@ tree from the world with a callback for clicks
-model :: (Message -> IO ()) -> Model World Message HTML
-model sendCB =
+model :: (World -> HTML) -> Model World Message HTML
+model view =
   asPipe $
   forever $
   do m <- await
      w <- lift get
      let w' = process m w
      lift $ put w'
-     yield $
-       rootView sendCB w'
-
--- | Initial State
-initialWorld :: World
-initialWorld = (0,0,const True,NotRequested)
+     yield $ view w'
 
 -- | A callback the sends @Message@s to an @Output@
 sendMessage :: Output Message -> Message -> IO ()
@@ -35,35 +30,36 @@ sendMessage output msg =
   void $
   send output msg
 
--- | Processes click events, possible dispatching to second order producers
+-- | Processes click events, possibly dispatching to second order producers
 clickProcessor :: Input Message -> IO (Input Message)
 clickProcessor uiClicks =
-  do (out,inner) <- spawn Unbounded
+  do (outbox,inbox) <- spawn Unbounded
      void $
        forkIO $
        runEffect $
        for (fromInput uiClicks) $
-       flip queue out
-     return inner
+       flip queue outbox
+     return inbox
 
-main :: IO ()
-main =
-  do (clicksOut,clicksIn) <- spawn (Bounded 10)
-     processedClicks <- clickProcessor clicksIn
-     let sendCB = sendMessage clicksOut
+eventLoop :: ((Message -> IO ()) -> World -> HTML) -> World -> IO ()
+eventLoop eventView initialWorld =
+  do (clicksOutbox,clicksInbox) <- spawn (Bounded 10)
+     processedClicks <- clickProcessor clicksInbox
+     let renderer =
+           eventView (sendMessage clicksOutbox)
      void $
-       runMVC initialWorld (model sendCB) $
+       runMVC initialWorld (model renderer) $
        managed $
        \k ->
          do treeState <- newMVar =<<
-                         renderSetup (rootView sendCB)
-                                     initialWorld
+                         renderSetup renderer initialWorld
             k (asSink (reRenderDiff treeState),asInput processedClicks)
   where reRenderDiff treeStateVar newTree =
-          do modifyMVar treeStateVar $
-               \(TreeState{_node = oldNode,_tree = oldTree}) ->
-                 do let patches =
-                          diff oldTree newTree
-                    newNode <- patch oldNode patches
-                    return $
-                      (makeTreeState newNode newTree,())
+          modifyMVar treeStateVar $
+          \(TreeState{_node = oldNode,_tree = oldTree}) ->
+            do let patches = diff oldTree newTree
+               newNode <- patch oldNode patches
+               return (makeTreeState newNode newTree,())
+
+main :: IO ()
+main = eventLoop Render.rootView (0,0,const True,NotRequested)
