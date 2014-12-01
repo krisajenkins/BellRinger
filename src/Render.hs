@@ -100,6 +100,6 @@ controls send marketData =
 rootView :: (Message -> IO ()) -> World -> HTML
 rootView send (a,b,filterFn,marketData) =
   vnode "div.container"
-            [navbar [vtext "div.navbar-brand" "Demo"]
-            ,row [col3 [controls send marketData],col9 [well [span (show (a,b))]]]
-            ,row [col12 [well [marketDataView filterFn marketData]]]]
+        [navbar [vtext "div.navbar-brand" "Demo"]
+        ,row [col3 [controls send marketData],col9 [well [span (show (a,b))]]]
+        ,row [col12 [well [marketDataView filterFn marketData]]]]
