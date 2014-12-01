@@ -56,8 +56,12 @@ jsonToMarket Nothing = Left "Nothing supplied."
 queue :: (MonadIO m) => Message -> Output Message -> Effect m ()
 
 -- We could process IncBoth directly easily enough. Instead, here's how to process it by applying two submessages.
-queue (IncBoth x y) output = liftIO $ do
-  void $ atomically $ send output (IncFst x) >> send output (IncSnd y)
+queue (IncBoth x y) output =
+  liftIO $
+  void $
+  atomically $
+  send output (IncFst x) >>
+  send output (IncSnd y)
 
 queue FetchMarket output = liftIO $ do
   _ <- atomically (send output MarketPending)
